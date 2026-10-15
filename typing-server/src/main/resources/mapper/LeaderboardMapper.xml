@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sjt.typing.mapper.LeaderboardEntryMapper">
+
+    <!--
+      按维度查询冷备榜前 N 名（wpm 降序）。
+      安全说明：#{limit} 无法用于 LIMIT（MySQL 预编译占位符不支持 LIMIT 参数），
+      故此处使用 ${limit} 拼接。这是本工程唯一允许的字符串拼接点，
+      且 limit 只接受程序内部传入的 int 常量，绝不接受用户输入，无 SQL 注入风险。
+    -->
+    <select id="selectTopByScope" resultType="com.sjt.typing.entity.LeaderboardEntry">
+        SELECT id, mode, mode2, language, uid, result_id, wpm, raw_wpm,
+               acc, consistency, timestamp
+        FROM t_leaderboard_entry
+        WHERE mode = #{mode}
+          AND mode2 = #{mode2}
+          AND language = #{language}
+        ORDER BY wpm DESC
+        LIMIT ${limit}
+    </select>
+
+</mapper>

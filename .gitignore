@@ -1,0 +1,32 @@
+# ---------- IDEA 配置 ----------
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# ---------- Maven 构建产物 ----------
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# ---------- 日志 ----------
+*.log
+logs/
+
+# ---------- 操作系统 ----------
+.DS_Store
+Thumbs.db
+
+# ---------- 本地敏感配置 ----------
+.env
+*.local
+application-local.yml
+
+# ---------- AI 工具目录 ----------
+.trae/
+
+
+# ---------- 项目方案.md ----------
+后端项目方案.md

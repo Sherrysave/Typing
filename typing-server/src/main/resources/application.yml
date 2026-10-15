@@ -1,0 +1,54 @@
+server:
+  # 本机 8080 已被 Oracle 监听器(TNSLSNR)占用，故默认改用 8090；可用环境变量 SERVER_PORT 覆盖
+  port: ${SERVER_PORT:8090}
+
+spring:
+  application:
+    name: typing-server
+  # 数据源：MySQL 8，允许用环境变量覆盖账号密码
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/typing_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:1234}
+  # Redis：排行榜 ZSET / 去重 / 缓存
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      database: 0
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  configuration:
+    # 下划线列名自动映射为驼峰属性
+    map-underscore-to-camel-case: true
+    # 日志输出 SQL，便于开发排查
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  mapper-locations: classpath*:/mapper/**/*.xml
+  global-config:
+    db-config:
+      id-type: auto
+
+# 自定义配置：JWT
+typing:
+  jwt:
+    # HS256 要求密钥 >= 32 字节，此处给足长度
+    secret: ${JWT_SECRET:typing-server-jwt-secret-key-please-change-in-prod-0123456789}
+    access-token-seconds: 900
+    refresh-token-seconds: 604800
+  # 反作弊校验阈值
+  validation:
+    max-wpm: 350
+    min-consistency-sd-ms: 5
+    max-afk-ratio: 0.3
+    chart-tolerance-ratio: 0.15
+  share:
+    # 分享短链前缀：前端页面地址 + ?r= 短码；生产可指向 GitHub Pages 静态站点
+    base-url: ${SHARE_BASE_URL:http://127.0.0.1:8090/?r=}

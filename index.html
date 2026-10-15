@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TypeLab · 打字练习</title>
+<style>
+/* ============ 主题系统：CSS 变量 + body[data-theme]，localStorage 持久化 ============ */
+:root{
+  --bg:#323437; --bg-light:#3c4045; --text:#d1d0c5; --sub:#646669;
+  --main:#e2b714; --error:#ca4754; --error-extra:#8f3a44;
+  --caret:#e2b714; --card:#2c2e31;
+  --word-size:30px;      /* 练习区字号：改这一处即可整体缩放 */
+}
+body[data-theme="light"]{
+  --bg:#f5f3ee; --bg-light:#e6e2d8; --text:#3a3a3a; --sub:#9a968c;
+  --main:#b8860b; --error:#c4283c; --error-extra:#e0a3ac;
+  --caret:#b8860b; --card:#ffffff;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  background:var(--bg); color:var(--text); min-height:100vh;
+  font-family:"Roboto Mono","Cascadia Code",Consolas,"Courier New",monospace;
+  display:flex; flex-direction:column; align-items:center;
+  transition:background .25s,color .25s; overflow-x:hidden;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:var(--sub);font-size:15px;padding:6px 11px;border-radius:6px;transition:color .15s,background .15s;}
+button:hover{color:var(--text);}
+button.active{color:var(--main);}
+button:focus{outline:none;}
+
+/* ============ 主区域：练习位置垂直居中（参考 Monkeytype） ============ */
+#main{flex:1 0 auto;width:100%;display:flex;flex-direction:column;
+  justify-content:center;align-items:center;padding:0 0 6vh;}
+
+/* ============ 顶栏 ============ */
+header{width:min(1440px,94vw);display:flex;align-items:center;gap:16px;padding:22px 0 14px;flex-wrap:wrap;}
+.logo{font-size:24px;font-weight:700;letter-spacing:1px;}
+.logo span{color:var(--main);}
+nav,#time-opts{display:flex;gap:2px;background:var(--bg-light);border-radius:8px;padding:3px;}
+#time-opts[hidden]{display:none;}
+.spacer{flex:1;}
+#btn-theme,#btn-restart{font-size:16px;}
+
+/* ============ 实时数据条 ============ */
+#stats-bar{width:min(1440px,94vw);display:flex;gap:34px;align-items:baseline;padding:0 4px 26px;color:var(--main);min-height:36px;}
+#stat-left{font-size:38px;font-weight:700;line-height:1;}
+#stat-wpm{font-size:24px;}
+#stats-bar .dim{color:var(--sub);font-size:15px;}
+
+/* ============ 打字区 ============ */
+.typing-area{position:relative;width:min(1440px,94vw);}
+/* 高度按“行高 + 上下外边距”算满 3 行，避免第 3 行被裁掉 */
+#words-wrap{overflow:hidden;position:relative;font-size:var(--word-size);line-height:1.6;
+  height:calc(var(--word-size) * 2.1 * 3);}
+/* position:relative 使 .word 的 offsetTop 相对 #words，transform 不影响 offsetTop，滚动计算稳定 */
+#words{position:relative;display:flex;flex-wrap:wrap;align-content:flex-start;
+  transition:transform .12s linear;will-change:transform;user-select:none;}
+.word{margin:.18em .42em .18em 0;border-bottom:2px solid transparent;}
+.word.error{border-bottom-color:var(--error);}
+.l{color:var(--sub);transition:color .08s;}
+.l.correct{color:var(--text);}
+.l.incorrect{color:var(--error);}
+.l.extra{color:var(--error-extra);}
+.l.missed{color:var(--error);border-bottom:1px dotted var(--error);}
+.l.nl{color:var(--main);opacity:.75;}
+
+/* 光标：坐标基准 .typing-area，高度与字母一致 */
+#caret{position:absolute;width:4px;border-radius:2px;background:var(--caret);z-index:2;
+  animation:blink 1.1s step-start infinite;pointer-events:none;transition:left .07s,top .07s,height .07s;}
+#caret.moving{animation:none;}
+@keyframes blink{50%{opacity:0;}}
+
+#hint{width:min(1440px,94vw);color:var(--sub);font-size:14px;padding:22px 4px 0;line-height:1.8;}
+#hint kbd{background:var(--bg-light);border-radius:4px;padding:1px 6px;}
+
+/* ============ 结果页 ============ */
+#result{width:min(1440px,94vw);padding:10px 0 40px;}
+#result[hidden]{display:none;}
+.res-main{display:flex;gap:56px;margin-bottom:16px;flex-wrap:wrap;}
+.res-main label{display:block;color:var(--sub);font-size:14px;margin-bottom:4px;}
+.res-main b{font-size:54px;color:var(--main);font-weight:700;line-height:1;}
+.pb-tag{font-size:12px;color:var(--bg);background:var(--main);border-radius:4px;padding:2px 7px;margin-left:8px;vertical-align:middle;}
+.pb-tag[hidden]{display:none;}
+#chart{width:100%;height:280px;background:var(--card);border-radius:10px;display:block;}
+.res-sub{color:var(--sub);font-size:14px;margin-top:14px;line-height:1.9;}
+.res-sub b{color:var(--text);}
+#r-weak{margin-top:10px;font-size:13px;color:var(--sub);}
+#r-weak .chip{display:inline-block;background:var(--bg-light);color:var(--error);border-radius:5px;padding:2px 10px;margin:0 6px 4px 0;font-size:15px;}
+#btn-again{margin-top:18px;background:var(--main);color:var(--bg);font-size:16px;padding:10px 26px;font-weight:700;}
+#btn-again:hover{filter:brightness(1.08);color:var(--bg);}
+
+/* ============ 教学模块 ============ */
+#modal,#auth-modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;}
+#modal[hidden],#auth-modal[hidden]{display:none;}
+#modal .card,#auth-modal .card{background:var(--card);border-radius:12px;max-width:860px;width:100%;max-height:90vh;
+  overflow-y:auto;padding:28px 30px;position:relative;box-shadow:0 12px 40px rgba(0,0,0,.45);}
+#modal h2,#auth-modal h2{color:var(--main);margin-bottom:14px;font-size:20px;}
+#modal h3{color:var(--text);margin:18px 0 8px;font-size:15px;}
+#modal img{width:100%;border-radius:8px;background:#eef;display:block;}
+#modal p,#modal li{color:var(--sub);font-size:13.5px;line-height:1.9;}
+.finger-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 26px;margin-top:6px;}
+.finger-grid div{font-size:13px;color:var(--sub);line-height:1.8;}
+.finger-grid b{color:var(--text);}
+.close-x{position:absolute;top:14px;right:16px;font-size:20px;}
+.actions{margin-top:20px;display:flex;gap:12px;flex-wrap:wrap;}
+.actions button{background:var(--bg-light);color:var(--text);padding:9px 18px;font-size:14px;}
+.actions button.primary{background:var(--main);color:var(--bg);font-weight:700;}
+
+/* ============ 账号 / 云端提交 / 分享 ============ */
+.auth-tabs{display:flex;gap:2px;background:var(--bg-light);border-radius:8px;padding:3px;width:fit-content;margin-bottom:14px;}
+.auth-box{display:flex;flex-direction:column;gap:10px;}
+.auth-box input{background:var(--bg-light);color:var(--text);border:1px solid transparent;
+  border-radius:8px;padding:10px 12px;font-family:inherit;font-size:14px;}
+.auth-box input:focus{outline:none;border-color:var(--main);}
+.auth-box input[hidden]{display:none;}
+.auth-box .primary{background:var(--main);color:var(--bg);font-weight:700;padding:9px 18px;}
+#auth-error{color:var(--error);font-size:13px;line-height:1.6;min-height:16px;}
+#user-pop{position:fixed;top:74px;right:3vw;background:var(--card);border-radius:10px;padding:14px 16px;
+  box-shadow:0 8px 28px rgba(0,0,0,.4);z-index:12;min-width:200px;}
+#user-pop[hidden]{display:none;}
+#user-pop .uname{font-size:15px;font-weight:700;color:var(--main);}
+#user-pop .uuid{color:var(--sub);font-size:12px;margin:4px 0 12px;word-break:break-all;}
+#user-pop button{background:var(--bg-light);color:var(--text);width:100%;padding:8px 0;}
+#btn-user{font-size:15px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#r-cloud{margin-top:6px;font-size:13px;color:var(--sub);line-height:1.8;}
+#r-cloud .ok{color:var(--main);}
+#r-cloud .bad,#share-out .bad,#share-banner .bad{color:var(--error);}
+#share-out{margin-top:12px;font-size:13px;color:var(--sub);word-break:break-all;line-height:1.8;}
+#share-out a{color:var(--main);}
+#btn-share{margin-top:12px;background:var(--bg-light);color:var(--text);font-size:14px;padding:8px 18px;}
+#btn-share:disabled{opacity:.6;cursor:default;}
+#share-banner{width:min(1440px,94vw);color:var(--sub);font-size:14px;padding:0 4px 18px;line-height:1.8;}
+#share-banner b{color:var(--main);}
+
+/* ============ 视图切换图标（紧跟 logo） ============ */
+#view-icons{display:flex;gap:2px;align-items:center;margin-left:4px;}
+#view-icons button{display:flex;align-items:center;justify-content:center;padding:6px 8px;}
+#view-icons svg{width:20px;height:20px;display:block;}
+/* #main / #view-icons 自身声明了 display，会盖掉 UA 的 [hidden] 规则，需显式补一条 */
+#main[hidden],#view-icons[hidden]{display:none;}
+
+/* ============ 顶栏第二行：居中的模式 / 时长选择 ============ */
+#toolbar{width:min(1440px,94vw);display:flex;justify-content:center;align-items:center;
+  gap:10px;flex-wrap:wrap;padding:0 0 4px;}
+#toolbar[hidden]{display:none;}
+
+/* ============ 榜单 / 记录视图 ============ */
+.view{width:min(1440px,94vw);padding:6px 0 40px;}
+.view[hidden]{display:none;}
+.view h2{color:var(--main);font-size:20px;margin-bottom:6px;}
+.view .view-sub{color:var(--sub);font-size:13px;line-height:1.9;margin-bottom:14px;}
+.view .view-sub b{color:var(--main);}
+.view .opts{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+.view .opts .grp{display:flex;gap:2px;background:var(--bg-light);border-radius:8px;padding:3px;}
+.view .opts .grp[hidden]{display:none;}
+.view .empty{color:var(--sub);font-size:14px;line-height:2;padding:22px 4px;}
+.view .empty button{background:var(--main);color:var(--bg);font-weight:700;padding:6px 16px;margin-left:8px;}
+table.lb{width:100%;border-collapse:collapse;font-size:14px;}
+table.lb th{color:var(--sub);font-weight:400;font-size:12px;text-align:left;
+  padding:8px 10px;border-bottom:1px solid var(--bg-light);white-space:nowrap;}
+table.lb td{padding:9px 10px;border-bottom:1px solid var(--bg-light);color:var(--text);}
+table.lb th.num,table.lb td.num{text-align:right;}
+table.lb tr.me td{color:var(--main);font-weight:700;}
+#lb-more,#rec-more{margin-top:16px;background:var(--bg-light);color:var(--text);padding:8px 20px;font-size:14px;}
+#lb-more[hidden],#rec-more[hidden]{display:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">type<span>lab</span></div>
+  <div id="view-icons">
+    <button id="btn-view-type" class="active" title="打字">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="6" width="20" height="12" rx="2"/>
+        <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/>
+      </svg>
+    </button>
+    <button id="btn-view-lb" title="排行榜">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 4h10v4a5 5 0 0 1-10 0V4z"/>
+        <path d="M7 6H4.8a2.2 2.2 0 0 0 2.2 2.2M17 6h2.2a2.2 2.2 0 0 1-2.2 2.2"/>
+        <path d="M12 13v4M8 21h8"/>
+      </svg>
+    </button>
+  </div>
+  <div class="spacer"></div>
+  <button id="btn-restart" title="重新开始 (Tab)">↻</button>
+  <button id="btn-theme" title="切换主题">◐</button>
+  <button id="btn-user" title="账号">登录</button>
+</header>
+
+<div id="toolbar">
+  <nav id="nav">
+    <button data-mode="time" class="active">测速</button>
+    <button data-mode="teach">指法教学</button>
+    <button data-mode="code">代码</button>
+    <button data-mode="quote">名言</button>
+    <button data-mode="weak">薄弱键</button>
+  </nav>
+  <div id="time-opts">
+    <button data-t="15">15</button>
+    <button data-t="30">30</button>
+    <button data-t="60" class="active">60</button>
+    <button data-t="120">120</button>
+  </div>
+</div>
+
+<main id="main">
+<div id="share-banner" hidden></div>
+<div id="stats-bar">
+  <span id="stat-left">60</span>
+  <span id="stat-wpm">0 wpm</span>
+  <span class="dim" id="stat-mode"></span>
+</div>
+
+<div class="typing-area" id="typing-area">
+  <div id="words-wrap"><div id="words"><div id="caret"></div></div></div>
+</div>
+
+<div id="hint">
+  <kbd>Tab</kbd> 重新开始 · <kbd>Backspace</kbd> 删除 · 击键按物理键位判定，中文输入法下同样可用
+</div>
+
+<section id="result" hidden>
+  <div class="res-main">
+    <div><label>WPM（每分钟词数）</label><b id="r-wpm">0</b><span class="pb-tag" id="r-pb" hidden>新纪录</span></div>
+    <div><label>准确率</label><b id="r-acc">0%</b></div>
+    <div><label>一致性</label><b id="r-con">—</b></div>
+  </div>
+  <canvas id="chart"></canvas>
+  <div class="res-sub" id="r-sub"></div>
+  <div id="r-cloud"></div>
+  <div id="r-weak"></div>
+  <button id="btn-share" hidden>生成分享链接</button>
+  <div id="share-out"></div>
+  <button id="btn-again">再来一次 (Enter)</button>
+</section>
+</main>
+
+<section id="lb-view" class="view" hidden>
+  <h2>排行榜</h2>
+  <div class="view-sub" id="lb-sub"></div>
+  <div class="opts">
+    <div class="grp" id="lb-mode-opts">
+      <button data-mode="time" class="active">测速</button>
+      <button data-mode="code">代码</button>
+      <button data-mode="quote">名言</button>
+      <button data-mode="weak">薄弱键</button>
+    </div>
+    <div class="grp" id="lb-time-opts">
+      <button data-t="15" class="active">15</button>
+      <button data-t="30">30</button>
+      <button data-t="60">60</button>
+      <button data-t="120">120</button>
+    </div>
+  </div>
+  <div id="lb-body"></div>
+</section>
+
+<section id="rec-view" class="view" hidden>
+  <h2>我的测试记录</h2>
+  <div class="view-sub" id="rec-sub"></div>
+  <div id="rec-body"></div>
+  <button id="rec-more" hidden>加载更多</button>
+</section>
+
+<div id="modal" hidden>
+  <div class="card">
+    <button class="close-x" id="modal-close">✕</button>
+    <h2>指法教学 · 标准键盘手指分工</h2>
+    <img src="finger-chart.png" alt="手指键位分工图">
+    <h3>手指分工（对应上图颜色）</h3>
+    <div class="finger-grid">
+      <div><b>左手小指</b>：` 1 Q A Z 及左侧功能键</div>
+      <div><b>左手无名指</b>：2 W S X</div>
+      <div><b>左手中指</b>：3 E D C</div>
+      <div><b>左手食指</b>：4 5 R T F G V B</div>
+      <div><b>右手食指</b>：6 7 Y U H J N M</div>
+      <div><b>右手中指</b>：8 I K ,</div>
+      <div><b>右手无名指</b>：9 O L .</div>
+      <div><b>右手小指</b>：0 P ; / 及右侧功能键</div>
+    </div>
+    <h3>基准键位（盲打定位）</h3>
+    <p>双手食指分别放在 <b style="color:var(--text)">F</b> 与 <b style="color:var(--text)">J</b> 上——这两个键面有小凸起，不看键盘即可定位。其余手指自然落在 <b style="color:var(--text)">A S D</b> 与 <b style="color:var(--text)">K L ;</b> 上，大拇指负责空格。每次击键后手指回到基准位置。</p>
+    <h3>练习建议</h3>
+    <ul>
+      <li>先练基准键行（Home Row），形成肌肉记忆后再扩展到上下排。</li>
+      <li>宁可慢，不可错——准确率优先，速度会随熟练度自然提升。</li>
+      <li>手腕微悬，用手指发力击键，而不是移动整只手。</li>
+    </ul>
+    <div class="actions">
+      <button class="primary" id="teach-home">开始基准键练习</button>
+      <button id="teach-weak">练习我的薄弱键</button>
+    </div>
+  </div>
+</div>
+
+<div id="auth-modal" hidden>
+  <div class="card" style="max-width:420px;">
+    <button class="close-x" id="auth-close">✕</button>
+    <h2>账号</h2>
+    <div class="auth-tabs">
+      <button data-tab="login" class="active">登录</button>
+      <button data-tab="signup">注册</button>
+    </div>
+    <div class="auth-box">
+      <input id="auth-name" placeholder="用户名（注册用，2~32 字）" hidden>
+      <input id="auth-account" placeholder="邮箱（登录可填用户名或邮箱）">
+      <input id="auth-pass" type="password" placeholder="密码（注册至少 8 位）">
+      <div id="auth-error"></div>
+      <button class="primary" id="auth-submit">登录</button>
+    </div>
+  </div>
+</div>
+
+<div id="user-pop" hidden>
+  <div class="uname" id="up-name"></div>
+  <div class="uuid" id="up-uid"></div>
+  <button id="btn-my-records">我的记录</button>
+  <button id="btn-logout">登出</button>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================================
+ * 架构参考 Monkeytype：
+ *  1) words 为词数组，DOM 中 .word > .l(span) 与其逐字符镜像，判定状态直接落在 class 上。
+ *  2) 逐字符判定：keydown → 物理键 e.code 映射为字符 → 与当前词的目标字符比较。
+ *  3) 光标：读取当前字母的 getBoundingClientRect，换算到 .typing-area 坐标系。
+ *  4) 行滚动：#words 设 position:relative，用 transform 上移；offsetTop 不受 transform 影响，
+ *     因而“活动词在第几行”可稳定算出，活动词始终停在第二行。
+ *  5) WPM=(正确字符/5)/分钟；raw=(全部击键/5)/分钟；acc=正确击键/总击键；
+ *     consistency=1 变异系数；每秒采样用于结果图表。
+ * ===================================================================================*/
+
+/* ---------- 静态数据 ---------- */
+const WORDS = ("the of and to in is you that it he was for on are as with his they at be this have from or one had by word but not what all were we when your can said there use an each which she do how their if will up other about out many then them these so some her would make like him into time has look two more write go see number no way could people my than first water been call who oil its now find long down day did get come made may part over new sound take only little work know place year live me back give most very after thing our just name good sentence man think say great where help through much before line right too mean old any same tell boy follow came want show also around form three small set put end does another well large must big even such because turn here why ask went men read need land different home us move try kind hand picture again change off play spell air away animal house point page letter mother answer found study still learn should world high every near add food between own below country plant last school father keep tree never start city earth eye light thought head under story saw left few while along might close something seem next hard open example begin life always those both paper together got group often run important until children side feet car mile night walk white sea began grow took river four carry state once book hear stop without second later miss idea enough eat face watch far real almost let above girl sometimes mountain cut young talk soon list song leave family it's").split(" ");
+
+const QUOTES = [
+  "The only way to do great work is to love what you do. If you have not found it yet, keep looking.",
+  "Simplicity is the soul of efficiency. Talk is cheap, show me the code.",
+  "We are what we repeatedly do. Excellence, then, is not an act but a habit.",
+  "Stay hungry, stay foolish. A journey of a thousand miles begins with a single step.",
+  "Programs must be written for people to read, and only incidentally for machines to execute."
+];
+
+/* 代码片段：保持“无缩进、扁平”风格，避免空格折叠导致排版失真 */
+const CODE = [
+  "const sum = (a, b) => a + b;\nconsole.log(sum(1, 2));",
+  "if (x > 0 && x < 100) { return x * 2; }",
+  "function fib(n) {\nif (n < 2) return n;\nreturn fib(n - 1) + fib(n - 2);\n}",
+  "def add(a, b):\nreturn a + b\nprint(add(1, 2))",
+  "let arr = [1, 2, 3].map(n => n * n);\narr.sort((a, b) => a - b);",
+  "public int fib(int n) {\nif (n < 2) return n;\nreturn fib(n - 1) + fib(n - 2);\n}"
+];
+
+/* ---------- 物理键 → 字符映射 ---------- */
+const CODE_MAP = {
+  KeyA:"a",KeyB:"b",KeyC:"c",KeyD:"d",KeyE:"e",KeyF:"f",KeyG:"g",KeyH:"h",KeyI:"i",KeyJ:"j",
+  KeyK:"k",KeyL:"l",KeyM:"m",KeyN:"n",KeyO:"o",KeyP:"p",KeyQ:"q",KeyR:"r",KeyS:"s",KeyT:"t",
+  KeyU:"u",KeyV:"v",KeyW:"w",KeyX:"x",KeyY:"y",KeyZ:"z",
+  Digit0:"0",Digit1:"1",Digit2:"2",Digit3:"3",Digit4:"4",Digit5:"5",Digit6:"6",Digit7:"7",Digit8:"8",Digit9:"9",
+  Minus:"-",Equal:"=",BracketLeft:"[",BracketRight:"]",Backslash:"\\",
+  Semicolon:";",Quote:"'",Comma:",",Period:".",Slash:"/",Backquote:"`"
+};
+const SHIFT_MAP = {"1":"!","2":"@","3":"#","4":"$","5":"%","6":"^","7":"&","8":"*","9":"(","0":")",
+  "-":"_","=":"+","[":"{","]":"}","\\":"|",";":":","'":"\"",",":"<",".":">","/":"?","`":"~"};
+
+function toChar(e){
+  // 优先物理键 e.code；无 code 的合成事件/移动端回退 e.key
+  if(!e.code){
+    if(e.key === " " || e.key === "Spacebar") return " ";
+    if(e.key === "Enter") return "\n";
+    return (e.key && e.key.length === 1) ? e.key : null;
+  }
+  if(e.code === "Space") return " ";
+  if(e.code === "Enter") return "\n";
+  const base = CODE_MAP[e.code];
+  if(!base) return null;
+  if(e.code.charCodeAt(0) === 75 /* Key* */){
+    const caps = e.getModifierState ? e.getModifierState("CapsLock") : false;
+    return (e.shiftKey !== !!caps) ? base.toUpperCase() : base;
+  }
+  return e.shiftKey ? (SHIFT_MAP[base] || base) : base;
+}
+
+/* ---------- DOM ---------- */
+const $ = id => document.getElementById(id);
+const wordsEl = $("words"), wrapEl = $("words-wrap"), caretEl = $("caret");
+const resultEl = $("result"), modalEl = $("modal");
+const statLeft = $("stat-left"), statWpm = $("stat-wpm"), statMode = $("stat-mode");
+
+/* =====================================================================================
+ * 后端 API 层：统一 request 封装
+ *  - 自动附带 Bearer accessToken；401 时用 refreshToken 换新令牌并重放一次
+ *  - 响应统一 {code,msg,data}，code!=0 或 HTTP 非 2xx 一律抛 Error
+ *  - 游客模式：未登录不调用云端接口，成绩仍只进 localStorage
+ * ===================================================================================*/
+const API_BASE = "http://127.0.0.1:8090";
+const AFK_GAP_MS = 2000;
+const TK = {
+  get access(){ return localStorage.getItem("tl_access") || ""; },
+  get refresh(){ return localStorage.getItem("tl_refresh") || ""; },
+  set(a, r){ if(a) localStorage.setItem("tl_access", a); if(r) localStorage.setItem("tl_refresh", r); },
+  clear(){ localStorage.removeItem("tl_access"); localStorage.removeItem("tl_refresh"); }
+};
+const ME = { uid:"", name:"" };
+
+async function api(path, opt){
+  opt = opt || {};
+  const headers = { "Content-Type": "application/json" };
+  if(opt.auth !== false && TK.access) headers["Authorization"] = "Bearer " + TK.access;
+  const res = await fetch(API_BASE + path, {
+    method: opt.method || "GET",
+    headers: headers,
+    body: opt.body === undefined ? undefined : JSON.stringify(opt.body)
+  });
+  let json = null;
+  try{ json = await res.json(); }catch(e){}
+  if(res.status === 401 && opt.auth !== false && TK.refresh && !opt.retried){
+    if(await tryRefresh()){
+      const next = Object.assign({}, opt); next.retried = true;
+      return api(path, next);
+    }
+  }
+  if(!res.ok || (json && json.code !== 0)){
+    const err = new Error((json && json.msg) || ("HTTP " + res.status));
+    err.status = res.status;
+    throw err;
+  }
+  return json ? json.data : null;
+}
+
+/* 用 refreshToken 换新令牌（后端同一 refreshToken 只能用一次） */
+async function tryRefresh(){
+  try{
+    const d = await api("/api/users/refresh",
+      { method:"POST", auth:false, retried:true, body:{ refreshToken: TK.refresh } });
+    TK.set(d.accessToken, d.refreshToken);
+    ME.uid = d.uid; ME.name = d.name; renderUser();
+    return true;
+  }catch(e){
+    TK.clear(); ME.uid = ""; ME.name = ""; renderUser();
+    return false;
+  }
+}
+
+function renderUser(){
+  const b = $("btn-user");
+  b.textContent = ME.uid ? ME.name : "登录";
+  b.classList.toggle("active", !!ME.uid);
+}
+
+/* ---------- 单一状态对象 ---------- */
+const S = {
+  mode:"time", timeLimit:60, weakPool:null,
+  words:[], wordEls:[], letterEls:[],   // words[i] 为目标字符串；后两者为对应 DOM
+  wi:0, li:0,                            // 当前词索引 / 词内字母索引
+  correct:0, incorrect:0, extra:0, missed:0,
+  totalKey:0, correctKey:0,              // 击键级：总击键 / 正确击键（算准确率）
+  typedChars:0, correctChars:0,          // 字符级：算 raw / wpm
+  running:false, done:false,
+  startAt:0, timer:null,
+  samples:[], lastSec:-1, secErrors:0, prevTyped:0, prevCorrect:0,
+  errs:{},                               // 本次会话各键错误次数
+  /* 反作弊采集：相邻击键间隔 / 按键按下时长 / 挂机时长 / 重启与未完成次数 */
+  spacing:[], durations:[], downAt:{}, lastKeyAt:0, afkMs:0, blurAt:0,
+  restartCount:0, incompleteTests:0, lastResultId:null,
+  shareView:false,
+  view:"type",                           // type | lb | rec
+  modalOpen:false
+};
+
+/* ---------- 词生成 ---------- */
+let wi_last = ""; // 避免连续重复词
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+
+function nextWordText(){
+  if(S.mode === "weak"){
+    const pool = S.weakPool ? S.weakPool.split("") : weakKeys();
+    const len = 3 + Math.floor(Math.random()*4);
+    let w = "";
+    for(let i=0;i<len;i++){
+      w += (Math.random() < .6) ? pool[Math.floor(Math.random()*pool.length)]
+                                : "etaoinshrdlcumwfgypbvk"[Math.floor(Math.random()*21)];
+    }
+    return w;
+  }
+  let w = pick(WORDS);
+  if(w === wi_last) w = pick(WORDS);
+  wi_last = w;
+  return w;
+}
+
+function weakKeys(){
+  const e = getKeyErrors();
+  const keys = Object.keys(e).sort((a,b)=>e[b]-e[a]).slice(0,6);
+  return keys.length ? keys : "asdfjkl;".split("");
+}
+function getKeyErrors(){
+  try{ return JSON.parse(localStorage.getItem("keyErrors") || "{}"); }catch(err){ return {}; }
+}
+
+/* 把多行文本切成“词”序列；换行用独占一个 '\n' 词表示 */
+function splitLines(text){
+  const out = [], lines = text.split("\n");
+  lines.forEach((ln, i) => {
+    ln.split(" ").filter(Boolean).forEach(t => out.push(t));
+    if(i < lines.length - 1) out.push("\n");
+  });
+  return out;
+}
+
+function addWord(text){
+  const div = document.createElement("div");
+  div.className = "word";
+  const chars = (text === "\n") ? ["⏎"] : text.split("");
+  const arr = chars.map(c => {
+    const sp = document.createElement("span");
+    sp.className = "l" + (c === "⏎" ? " nl" : "");
+    sp.textContent = c;
+    div.appendChild(sp);
+    return sp;
+  });
+  wordsEl.appendChild(div);
+  S.words.push(text); S.wordEls.push(div); S.letterEls.push(arr);
+}
+function appendRandomWords(n){ for(let i=0;i<n;i++) addWord(nextWordText()); }
+
+/* ---------- 构建 / 重置 ---------- */
+function build(){
+  S.words = []; S.wordEls = []; S.letterEls = [];
+  wordsEl.querySelectorAll(".word").forEach(el => el.remove());   // 只清词，保留光标节点
+  wordsEl.style.transform = "translateY(0px)";
+  if(S.mode === "time" || S.mode === "weak"){ appendRandomWords(60); }
+  else if(S.mode === "quote"){ splitLines(pick(QUOTES)).forEach(addWord); }
+  else if(S.mode === "code"){ splitLines(pick(CODE)).forEach(addWord); }
+}
+
+function reset(){
+  clearInterval(S.timer); S.timer = null;
+  /* 反作弊计数：本次测试已开始却被 Tab/重启打断 → 记一次重启与一次未完成；
+     上一轮已正常结束则清零，为新测试重新计数 */
+  if(S.totalKey > 0 && !S.done){ S.restartCount++; S.incompleteTests++; }
+  else if(S.done){ S.restartCount = 0; S.incompleteTests = 0; }
+  Object.assign(S, {
+    wi:0, li:0, correct:0, incorrect:0, extra:0, missed:0,
+    totalKey:0, correctKey:0, typedChars:0, correctChars:0,
+    running:false, done:false, startAt:0,
+    samples:[], lastSec:-1, secErrors:0, prevTyped:0, prevCorrect:0, errs:{},
+    spacing:[], durations:[], downAt:{}, lastKeyAt:0, afkMs:0, blurAt:0, lastResultId:null
+  });
+  resultEl.hidden = true;
+  caretEl.style.opacity = "1";
+  statWpm.textContent = "0 wpm";
+  $("r-cloud").innerHTML = ""; $("r-weak").innerHTML = "";
+  $("share-out").innerHTML = ""; $("btn-share").hidden = true;
+  build();
+  updateModeLabel();
+  layout();
+}
+
+/* ---------- 模式 ---------- */
+function setMode(m, pool){
+  S.mode = m;
+  if(m === "weak") S.weakPool = pool || null;
+  [...$("nav").children].forEach(b => b.classList.toggle("active", b.dataset.mode === m));
+  $("time-opts").hidden = (m !== "time");
+  reset();
+}
+function updateModeLabel(){
+  const t = S.timeLimit;
+  const txt = {
+    time: (t === 60 ? "1 分钟测速" : t + " 秒测速") + " · 开始输入即计时",
+    quote:"名言模式 · 打完即结束",
+    code: "代码模式 · ⏎ 处按 Enter 换行",
+    weak: S.weakPool ? "基准键强化训练" : "薄弱键自适应训练（按历史错误率出题）"
+  };
+  statMode.textContent = txt[S.mode];
+  updateProgress();
+}
+function updateProgress(){
+  if(S.mode === "time") statLeft.textContent = String(Math.ceil(Math.max(0, S.timeLimit - elapsedSec())));
+  else statLeft.textContent = Math.min(S.wi, S.words.length) + "/" + S.words.length;
+}
+
+/* ---------- 光标 + 行滚动 ---------- */
+function layout(){ scrollActive(); placeCaret(); }
+
+function scrollActive(){
+  const first = S.wordEls[0], cur = S.wordEls[S.wi];
+  if(!first || !cur) return;
+  // 行距 = 元素高度 + 上下外边距（offsetHeight 不含 margin，直接用它会算错行号）
+  const cs = getComputedStyle(first);
+  const pitch = first.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+  if(!pitch) return;
+  const rowsBelow = Math.max(0, Math.round((cur.offsetTop - first.offsetTop) / pitch));
+  const shift = Math.max(0, rowsBelow - 1);   // 活动词始终停在第 2 行
+  wordsEl.style.transform = "translateY(" + (-shift * pitch) + "px)";
+}
+
+function placeCaret(){
+  if(S.done){ caretEl.style.opacity = "0"; return; }
+  caretEl.style.opacity = "1";
+  const letters = S.letterEls[S.wi];
+  if(!letters || !letters.length) return;
+  const atEnd = S.li >= letters.length;
+  const el = letters[Math.min(S.li, letters.length - 1)];
+  /* 光标是 #words 的子节点，坐标以 #words 为基准：两者 rect 同时含父级 transform，
+     相减后 transform 被抵消，因此算出的局部坐标不受滚动影响，光标自动随行滚动一起移动 */
+  const wr = wordsEl.getBoundingClientRect(), r = el.getBoundingClientRect();
+  caretEl.style.left = ((atEnd ? r.right : r.left) - wr.left) + "px";
+  caretEl.style.top = (r.top - wr.top) + "px";
+  caretEl.style.height = r.height + "px";
+  caretEl.classList.add("moving");
+  clearTimeout(placeCaret._t);
+  placeCaret._t = setTimeout(() => caretEl.classList.remove("moving"), 600);
+}
+
+/* ---------- 计时 ---------- */
+function elapsedSec(){ return S.startAt ? (Date.now() - S.startAt) / 1000 : 0; }
+function minutes(){ return Math.max(elapsedSec() / 60, 1/60000); }
+function curWpm(){ return Math.round((S.correctChars / 5) / minutes()); }
+
+function start(){
+  S.running = true;
+  S.startAt = Date.now();
+  S.timer = setInterval(tick, 100);
+}
+function tick(){
+  if(S.mode === "time"){
+    const left = Math.max(0, S.timeLimit - elapsedSec());
+    statLeft.textContent = String(Math.ceil(left));
+    if(left <= 0){ finish(); return; }
+  }
+  statWpm.textContent = curWpm() + " wpm";
+  /* 逐秒采样：用“本秒新增字符数”算瞬时速率；累计平均会把首秒的极小分母变成离群值，
+     进而把一致性算成 0，因此这里改用增量。 */
+  const sec = Math.floor(elapsedSec());
+  if(sec >= 1 && sec > S.lastSec){
+    const ds = sec - (S.lastSec < 1 ? 0 : S.lastSec);
+    const dTyped = S.typedChars - S.prevTyped;
+    const dCorrect = S.correctChars - S.prevCorrect;
+    S.prevTyped = S.typedChars;
+    S.prevCorrect = S.correctChars;
+    S.lastSec = sec;
+    S.samples.push({
+      wpm: Math.round((dCorrect / 5) / (ds / 60)),
+      raw: Math.round((dTyped / 5) / (ds / 60)),
+      err: S.secErrors
+    });
+    S.secErrors = 0;
+  }
+}
+
+/* ---------- 输入判定 ---------- */
+function typeChar(ch){
+  if(S.done || S.wi >= S.words.length) return;
+  const target = S.words[S.wi];
+
+  if(ch === " " && S.li === 0) return;          // 词首空格：忽略，且不启动计时
+  if(!S.running) start();
+
+  /* 换行词 */
+  if(target === "\n"){
+    S.totalKey++; S.typedChars++;
+    const el = S.letterEls[S.wi][0];
+    if(ch === "\n"){
+      el.classList.add("correct"); S.correct++; S.correctKey++; S.correctChars++;
+    }else{
+      el.classList.add("incorrect"); S.incorrect++; S.secErrors++;
+      S.errs[ch] = (S.errs[ch] || 0) + 1;
+      S.wordEls[S.wi].classList.add("error");
+    }
+    advance(); return;
+  }
+
+  /* 空格提交当前词 */
+  if(ch === " "){ commitWord(); return; }
+
+  /* 常规字符 */
+  S.totalKey++; S.typedChars++;
+  if(S.li < target.length){
+    const want = target[S.li];
+    const el = S.letterEls[S.wi][S.li];
+    if(ch === want){
+      el.classList.add("correct"); S.correct++; S.correctKey++; S.correctChars++;
+    }else{
+      el.classList.add("incorrect"); S.incorrect++; S.secErrors++;
+      S.errs[want] = (S.errs[want] || 0) + 1;
+    }
+    S.li++;
+  }else{
+    /* 超出词长 → extra */
+    const sp = document.createElement("span");
+    sp.className = "l extra"; sp.textContent = ch === " " ? "␣" : ch;
+    S.wordEls[S.wi].appendChild(sp);
+    S.letterEls[S.wi].push(sp);
+    S.extra++; S.secErrors++;
+    S.errs[ch] = (S.errs[ch] || 0) + 1;
+    S.li++;
+  }
+  layout();
+}
+
+function commitWord(){
+  const target = S.words[S.wi], len = target.length, wEl = S.wordEls[S.wi];
+  S.totalKey++; S.typedChars++;                       // 空格本身是一次击键
+  let ok = true;
+  if(S.li < len){
+    for(let i = S.li; i < len; i++){ S.letterEls[S.wi][i].classList.add("missed"); S.missed++; }
+    ok = false;
+  }
+  if(wEl.querySelector(".incorrect, .extra, .missed")) ok = false;
+  if(ok){ S.correctKey++; S.correctChars++; }          // 正确词后的空格计入 WPM
+  else wEl.classList.add("error");
+  advance();
+}
+
+function advance(){
+  S.wi++; S.li = 0;
+  if(S.mode === "time" || S.mode === "weak"){
+    if(S.wi > S.words.length - 12) appendRandomWords(20);
+  }else{
+    if(S.wi >= S.words.length){ finish(); return; }
+    updateProgress();
+  }
+  layout();
+}
+
+/* ---------- 退格 ---------- */
+function backspace(){
+  if(S.done) return;
+  if(S.li > 0){
+    S.li--;
+    undoLetter(S.wordEls[S.wi], S.li);
+    layout(); return;
+  }
+  if(S.wi > 0){
+    const prev = S.wordEls[S.wi - 1];
+    if(!prev.classList.contains("error") && !prev.querySelector(".missed")) return; // 只回退到出错/漏打的词
+    prev.classList.remove("error");
+    S.wi--; S.li = S.letterEls[S.wi].length;
+    if(S.li > 0){ S.li--; undoLetter(S.wordEls[S.wi], S.li); }
+    layout();
+  }
+}
+
+function undoLetter(wordEl, li){
+  const arr = S.letterEls[S.wi];
+  const el = arr[li];
+  if(!el) return;
+  if(el.classList.contains("extra")){
+    arr.splice(li, 1); el.remove();
+    S.extra--; S.totalKey--; S.typedChars--; refundError();
+  }else if(el.classList.contains("correct")){
+    S.correct--; S.correctKey--; S.correctChars--; S.totalKey--; S.typedChars--;
+  }else if(el.classList.contains("incorrect")){
+    S.incorrect--; S.totalKey--; S.typedChars--; refundError();
+  }else if(el.classList.contains("missed")){
+    S.missed--;
+  }
+  el.classList.remove("correct", "incorrect", "missed");
+}
+
+/* 撤销错误字符时同步回退图表里的错误计数，保证「每秒采样错误总数」始终等于
+   charStats.incorrect+extra —— 否则后端「采样与总账自洽」校验会误判 */
+function refundError(){
+  if(S.secErrors > 0){ S.secErrors--; return; }
+  for(let i = S.samples.length - 1; i >= 0; i--){
+    if(S.samples[i].err > 0){ S.samples[i].err--; return; }
+  }
+}
+
+/* ---------- 结束 / 结果 ---------- */
+let lastSamples = [];
+function finish(){
+  clearInterval(S.timer); S.timer = null;
+  S.running = false; S.done = true;
+  caretEl.style.opacity = "0";
+
+  /* 收尾采样：把最后一个「不完整秒」的增量补进图表，避免图表错误总数
+     与 charStats 总账对不上（后端会做交叉一致性校验） */
+  if(S.secErrors > 0 || S.typedChars > S.prevTyped || S.correctChars > S.prevCorrect){
+    const nowSec = elapsedSec();
+    const ds = Math.max(nowSec - (S.lastSec < 1 ? 0 : S.lastSec), 1 / 60000);
+    const dTyped = S.typedChars - S.prevTyped, dCorrect = S.correctChars - S.prevCorrect;
+    S.samples.push({
+      wpm: Math.round((dCorrect / 5) / (ds / 60)),
+      raw: Math.round((dTyped / 5) / (ds / 60)),
+      err: S.secErrors
+    });
+    S.secErrors = 0;
+  }
+
+  const m = minutes();
+  const wpm = Math.round((S.correctChars / 5) / m);
+  const raw = Math.round((S.typedChars / 5) / m);
+  const acc = S.totalKey ? Math.round(S.correctKey / S.totalKey * 100) : 100;
+
+  const raws = S.samples.map(s => s.raw);
+  const mean = raws.length ? raws.reduce((a,b)=>a+b,0) / raws.length : 0;
+  const sd = raws.length ? Math.sqrt(raws.reduce((a,b)=>a+(b-mean)*(b-mean),0) / raws.length) : 0;
+  const con = (raws.length >= 2 && mean > 0) ? Math.max(0, Math.min(100, Math.round((1 - sd / mean) * 100))) : null;
+
+  /* 持久化 */
+  const errs = getKeyErrors();
+  for(const k in S.errs) errs[k] = (errs[k] || 0) + S.errs[k];
+  localStorage.setItem("keyErrors", JSON.stringify(errs));
+
+  const tag = S.mode === "time" ? S.timeLimit : "";
+  const pbKey = "pb|" + S.mode + "|" + tag;
+  const oldPb = parseFloat(localStorage.getItem(pbKey) || "0");
+  const isPb = oldPb === 0 ? wpm > 0 : wpm > oldPb;
+  if(isPb) localStorage.setItem(pbKey, String(wpm));
+
+  const rcKey = "recent|" + S.mode + "|" + tag;
+  let recent = [];
+  try{ recent = JSON.parse(localStorage.getItem(rcKey) || "[]"); }catch(err){}
+  recent.push(wpm); if(recent.length > 10) recent.shift();
+  localStorage.setItem(rcKey, JSON.stringify(recent));
+  const avg = Math.round(recent.reduce((a,b)=>a+b,0) / recent.length);
+
+  /* 渲染 */
+  $("r-wpm").textContent = wpm;
+  $("r-acc").textContent = acc + "%";
+  $("r-con").textContent = con === null ? "—" : con + "%";
+  $("r-pb").hidden = !isPb;
+
+  const dur = S.mode === "time" ? S.timeLimit : Math.round(elapsedSec());
+  const modeName = {time:"测速", quote:"名言", code:"代码", weak:"薄弱键"}[S.mode];
+  $("r-sub").innerHTML =
+    "模式 <b>" + modeName + "</b> · 用时 <b>" + dur + "s</b> · " +
+    "字符（对/错/多/漏）<b>" + S.correct + "/" + S.incorrect + "/" + S.extra + "/" + S.missed + "</b> · " +
+    "raw <b>" + raw + "</b> · 近" + recent.length + "次平均 <b>" + avg + " wpm</b>" +
+    (oldPb ? " · 历史最佳 <b>" + Math.max(oldPb, wpm) + " wpm</b>" : "");
+
+  const top = Object.keys(errs).sort((a,b)=>errs[b]-errs[a]).slice(0,5);
+  $("r-weak").innerHTML = top.length
+    ? "历史薄弱键：" + top.map(k => '<span class="chip">' + (k === " " ? "␣" : k) + "</span>").join("")
+    : "";
+
+  resultEl.hidden = false;
+  statMode.textContent = "测试完成 · Enter 再来一次";
+  lastSamples = S.samples;
+  drawChart(lastSamples);
+
+  /* 登录则上传云端并展示有效性/名次；游客沿用本地存储不变 */
+  submitIfLoggedIn(wpm, raw, acc, con);
+}
+
+/* =====================================================================================
+ * 成绩上传：把反作弊采集字段一并提交给后端做交叉一致性校验
+ * ===================================================================================*/
+function distStats(arr){
+  if(!arr || !arr.length) return { average:0, sd:0 };
+  const mean = arr.reduce((a,b)=>a+b,0) / arr.length;
+  const sd = Math.sqrt(arr.reduce((a,b)=>a+(b-mean)*(b-mean),0) / arr.length);
+  return { average: Math.round(mean*100)/100, sd: Math.round(sd*100)/100 };
+}
+
+/* 挂机累计：失焦期间 + 停手超过阈值的时长；提交时若仍失焦则补到此刻 */
+function afkTotalMs(){
+  let ms = S.afkMs;
+  if(S.blurAt) ms += performance.now() - S.blurAt;
+  return Math.round(ms);
+}
+
+/* mode2 与后端约定位：time 模式用秒数，其余模式用模式名（后端要求非空） */
+function mode2Of(){ return S.mode === "time" ? String(S.timeLimit) : S.mode; }
+
+function buildPayload(wpm, raw, acc, con){
+  return {
+    wpm: wpm, rawWpm: raw, acc: acc,
+    consistency: (con === null ? 0 : con),
+    mode: S.mode, mode2: mode2Of(), language: "english",
+    punctuation: false, numbers: false,
+    testDuration: Math.round(elapsedSec()*100)/100,
+    restartCount: S.restartCount, incompleteTests: S.incompleteTests,
+    afkDuration: afkTotalMs(),
+    charStats: { correct: S.correctChars, incorrect: S.incorrect, extra: S.extra, missed: S.missed },
+    keySpacingStats: distStats(S.spacing),
+    keyDurationStats: distStats(S.durations),
+    chartData: S.samples.map(p => ({ wpm:p.wpm, raw:p.raw, err:p.err })),
+    tags: [],
+    clientTimestamp: Date.now()
+  };
+}
+
+async function submitIfLoggedIn(wpm, raw, acc, con){
+  const cloud = $("r-cloud");
+  if(!ME.uid){
+    cloud.innerHTML = "游客模式：成绩仅保存在本地；点击右上角「登录」后成绩将自动同步云端";
+    return;
+  }
+  cloud.textContent = "正在提交云端…";
+  try{
+    const d = await api("/api/results", { method:"POST", body: buildPayload(wpm, raw, acc, con) });
+    S.lastResultId = d.id;
+    let html = d.validity === 1 ? '<span class="ok">云端已入库（有效成绩）</span>'
+             : d.validity === 0 ? '<span class="bad">已入库待人工复核</span>'
+             : '<span class="bad">已入库但判定无效</span>';
+    if(d.isPb) html += " · <b>新纪录</b>";
+    if(d.rank) html += " · 当前名次 <b>#" + d.rank + "</b>";
+    if(d.flags && d.flags.length) html += " · flags: " + d.flags.join(", ");
+    cloud.innerHTML = html;
+    $("btn-share").hidden = (d.validity !== 1);
+  }catch(err){
+    cloud.innerHTML = '<span class="bad">云端提交失败：' + err.message + "</span>";
+  }
+}
+
+/* =====================================================================================
+ * 分享视图：以 ?r={code} 打开时向后端拉取成绩快照并复用结果面板渲染
+ * ===================================================================================*/
+async function loadShare(code){
+  S.shareView = true; S.done = true;
+  $("toolbar").hidden = true;
+  $("view-icons").hidden = true;
+  $("stats-bar").style.display = "none";
+  $("typing-area").style.display = "none";
+  $("hint").style.display = "none";
+  $("btn-again").hidden = true;
+  const banner = $("share-banner");
+  banner.hidden = false;
+  banner.textContent = "正在加载分享成绩…";
+  try{
+    const d = await api("/api/share/" + encodeURIComponent(code), { auth:false });
+    const modeName = d.mode === "time" ? (d.mode2 + " 秒测速")
+                   : ({quote:"名言", code:"代码", weak:"薄弱键"}[d.mode] || d.mode);
+    banner.innerHTML = "分享成绩 · 来自 <b>" + (d.name || d.uid) + "</b>" +
+      " · 模式 <b>" + modeName + "</b>" +
+      (d.rank ? " · 名次 <b>#" + d.rank + "</b>" : "");
+    $("r-wpm").textContent = Math.round(d.wpm);
+    $("r-acc").textContent = Math.round(d.acc) + "%";
+    $("r-con").textContent = d.consistency == null ? "—" : Math.round(d.consistency) + "%";
+    $("r-pb").hidden = !d.isPb;
+    const cs = d.charStats || {};
+    $("r-sub").innerHTML =
+      "用时 <b>" + (d.testDuration == null ? "—" : Math.round(d.testDuration)) + "s</b> · " +
+      "字符（对/错/多/漏）<b>" + (cs.correct||0) + "/" + (cs.incorrect||0) + "/" + (cs.extra||0) + "/" + (cs.missed||0) + "</b> · " +
+      "raw <b>" + Math.round(d.rawWpm) + "</b>" +
+      (d.tags && d.tags.length ? " · 标签 <b>" + d.tags.join(",") + "</b>" : "");
+    resultEl.hidden = false;
+    lastSamples = d.chartData || [];
+    drawChart(lastSamples);
+  }catch(err){
+    banner.innerHTML = '<span class="bad">分享数据加载失败：' + err.message + "</span>";
+  }
+}
+
+/* =====================================================================================
+ * 视图路由：type（打字）/ lb（榜单）/ rec（我的记录）
+ * ===================================================================================*/
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+function fmtNum(v){ return v == null ? "—" : String(Math.round(Number(v) * 100) / 100); }
+function fmtTime(ms){
+  if(!ms) return "—";
+  const d = new Date(ms);
+  const p = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
+         " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+
+function setView(v){
+  if(v === S.view) return;
+  /* 离开打字视图：把进行中的一轮按「中断」处理（reset 内部会计入 restart/incomplete），
+     避免测试在不可见状态下继续计时并在后台悄悄结算提交 */
+  if(S.view === "type" && v !== "type") reset();
+  S.view = v;
+  $("main").hidden     = (v !== "type");
+  $("toolbar").hidden  = (v !== "type");
+  $("lb-view").hidden  = (v !== "lb");
+  $("rec-view").hidden = (v !== "rec");
+  $("btn-view-type").classList.toggle("active", v === "type");
+  $("btn-view-lb").classList.toggle("active", v === "lb");
+  if(v === "type") requestAnimationFrame(layout);
+  if(v === "lb") loadLeaderboard();
+  if(v === "rec") loadRecords(true);
+}
+
+/* ---------- 榜单：维度口径与提交时 mode2Of() 保持一致 ---------- */
+const LB = { mode:"time", timeLimit:15, language:"english" };
+const MODE_NAME = { code:"代码", quote:"名言", weak:"薄弱键" };
+
+function lbMode2(){ return LB.mode === "time" ? String(LB.timeLimit) : LB.mode; }
+function lbDimName(){
+  return LB.mode === "time" ? ("测速 · " + LB.timeLimit + "s") : (MODE_NAME[LB.mode] || LB.mode);
+}
+function lbQuery(){
+  return "mode=" + encodeURIComponent(LB.mode) +
+         "&mode2=" + encodeURIComponent(lbMode2()) +
+         "&language=" + encodeURIComponent(LB.language);
+}
+function lbRowHtml(r){
+  return '<tr' + (ME.uid && r.uid === ME.uid ? ' class="me"' : '') + '>'
+    + '<td class="num">' + r.rank + '</td>'
+    + '<td>' + esc(r.name || r.uid) + '</td>'
+    + '<td class="num">' + fmtNum(r.wpm) + '</td>'
+    + '<td class="num">' + fmtNum(r.rawWpm) + '</td>'
+    + '<td class="num">' + fmtNum(r.acc) + '%</td>'
+    + '<td class="num">' + (r.consistency == null ? "—" : fmtNum(r.consistency) + "%") + '</td>'
+    + '<td>' + fmtTime(r.timestamp) + '</td></tr>';
+}
+async function loadLeaderboard(){
+  $("lb-time-opts").hidden = (LB.mode !== "time");
+  $("lb-sub").innerHTML = "维度 <b>" + lbDimName() + "</b> · 语言 english";
+  const box = $("lb-body");
+  box.innerHTML = '<div class="empty">加载中…</div>';
+  try{
+    const list = await api("/api/leaderboards?" + lbQuery() + "&limit=50", { auth:false }) || [];
+    if(ME.uid){
+      try{
+        const rank = await api("/api/leaderboards/rank?" + lbQuery());
+        /* 该维度没有成绩时后端返回 data:null（不是错误码），据此显示未上榜 */
+        $("lb-sub").innerHTML += (rank == null)
+          ? " · 我的名次：未上榜"
+          : " · 我的名次 <b>#" + rank + "</b>";
+      }catch(e){
+        $("lb-sub").innerHTML += " · 我的名次：未上榜";
+      }
+    }else{
+      $("lb-sub").innerHTML += " · 登录后可查看我的名次";
+    }
+    box.innerHTML = list.length
+      ? '<table class="lb"><thead><tr><th class="num">名次</th><th>用户名</th>'
+        + '<th class="num">WPM</th><th class="num">raw</th><th class="num">准确率</th>'
+        + '<th class="num">一致性</th><th>时间</th></tr></thead><tbody>'
+        + list.map(lbRowHtml).join("") + '</tbody></table>'
+      : '<div class="empty">该维度暂无成绩，回到打字页打一局试试</div>';
+  }catch(err){
+    box.innerHTML = '<div class="empty">榜单加载失败：' + esc(err.message) + '</div>';
+  }
+}
+
+/* ---------- 我的测试记录 ---------- */
+const REC = { page:1, size:20, total:0 };
+const VALIDITY_TEXT = { "1":"有效", "0":"待复核", "-1":"无效" };
+
+function recModeName(r){
+  return r.mode === "time" ? ("测速 " + r.mode2 + "s") : (MODE_NAME[r.mode] || r.mode);
+}
+function recRowHtml(r){
+  const v = r.validity == null ? "—" : (VALIDITY_TEXT[String(r.validity)] || r.validity);
+  return '<tr>'
+    + '<td>' + fmtTime(r.clientTimestamp) + '</td>'
+    + '<td>' + esc(recModeName(r)) + '</td>'
+    + '<td class="num">' + (r.testDuration == null ? "—" : fmtNum(r.testDuration) + "s") + '</td>'
+    + '<td class="num">' + fmtNum(r.wpm) + '</td>'
+    + '<td class="num">' + fmtNum(r.rawWpm) + '</td>'
+    + '<td class="num">' + fmtNum(r.acc) + '%</td>'
+    + '<td>' + v + '</td>'
+    + '<td>' + (r.isPb ? "★" : "") + '</td></tr>';
+}
+async function loadRecords(append){
+  const box = $("rec-body"), more = $("rec-more");
+  if(!ME.uid){
+    $("rec-sub").textContent = "";
+    more.hidden = true;
+    box.innerHTML = '<div class="empty">个人测试记录需要登录后查看<button id="rec-login">登录</button></div>';
+    $("rec-login").addEventListener("click", openAuth);
+    return;
+  }
+  if(!append){ REC.page = 1; box.innerHTML = '<div class="empty">加载中…</div>'; }
+  try{
+    const d = await api("/api/results/my?page=" + REC.page + "&size=" + REC.size);
+    const list = (d && d.records) || [];
+    REC.total = (d && d.total) || 0;
+    const head = '<table class="lb"><thead><tr><th>时间</th><th>模式</th>'
+      + '<th class="num">用时</th><th class="num">WPM</th><th class="num">raw</th>'
+      + '<th class="num">准确率</th><th>有效性</th><th>PB</th></tr></thead><tbody>';
+    const body = append && box.querySelector("tbody") ? box.querySelector("tbody").innerHTML : "";
+    box.innerHTML = head + body + list.map(recRowHtml).join("") + '</tbody></table>';
+    const shown = box.querySelectorAll("tbody tr").length;
+    $("rec-sub").textContent = "共 " + REC.total + " 条记录 · 已显示 " + shown + " 条";
+    more.hidden = shown >= REC.total;
+    if(!more.hidden) REC.page++;
+  }catch(err){
+    $("rec-sub").textContent = "";
+    more.hidden = true;
+    box.innerHTML = '<div class="empty">记录加载失败：' + esc(err.message) + '</div>';
+  }
+}
+
+/* ---------- 结果图表（Canvas 手绘） ---------- */
+function drawChart(data){
+  const cv = $("chart");
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 900, H = 280;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const css = getComputedStyle(document.body);
+  const cMain = css.getPropertyValue("--main").trim() || "#e2b714";
+  const cSub  = css.getPropertyValue("--sub").trim()  || "#646669";
+  const cErr  = css.getPropertyValue("--error").trim()|| "#ca4754";
+
+  if(!data || data.length === 0){
+    ctx.fillStyle = cSub; ctx.font = "14px monospace"; ctx.textAlign = "center";
+    ctx.fillText("数据不足，无法绘图", W / 2, H / 2);
+    return;
+  }
+  const d = data.length === 1 ? [data[0], data[0]] : data;
+
+  const pad = { l:46, r:16, t:26, b:28 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  const maxY = Math.max(10, ...d.map(p => Math.max(p.wpm, p.raw))) * 1.15;
+  const X = i => pad.l + (i / (d.length - 1)) * iw;
+  const Y = v => pad.t + ih - (v / maxY) * ih;
+
+  /* 网格 + Y 轴刻度 */
+  ctx.strokeStyle = cSub; ctx.globalAlpha = .25;
+  ctx.fillStyle = cSub; ctx.font = "11px monospace"; ctx.textAlign = "right";
+  for(let g = 0; g <= 4; g++){
+    const yy = Y(maxY * g / 4);
+    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(W - pad.r, yy); ctx.stroke();
+    ctx.fillText(Math.round(maxY * g / 4), pad.l - 8, yy + 4);
+  }
+  ctx.globalAlpha = 1;
+
+  /* X 轴刻度（秒） */
+  ctx.textAlign = "center";
+  const step = Math.max(1, Math.ceil(d.length / 10));
+  for(let i = 0; i < d.length; i += step) ctx.fillText((i + 1) + "s", X(i), H - 10);
+
+  const line = (key, color, dash) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash(dash || []);
+    ctx.beginPath();
+    d.forEach((p, i) => i ? ctx.lineTo(X(i), Y(p[key])) : ctx.moveTo(X(i), Y(p[key])));
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  line("raw", cSub, [5, 4]);
+  line("wpm", cMain);
+
+  /* 错误点 */
+  ctx.fillStyle = cErr;
+  d.forEach((p, i) => {
+    if(!p.err) return;
+    ctx.beginPath(); ctx.arc(X(i), pad.t + ih - 7, 3, 0, Math.PI * 2); ctx.fill();
+  });
+
+  /* 图例 */
+  ctx.font = "12px monospace"; ctx.textAlign = "left";
+  ctx.fillStyle = cMain; ctx.fillText("— wpm", pad.l + 8, pad.t - 8);
+  ctx.fillStyle = cSub;  ctx.fillText("- - raw", pad.l + 72, pad.t - 8);
+  ctx.fillStyle = cErr;  ctx.fillText("· 错误", pad.l + 148, pad.t - 8);
+}
+
+/* ---------- 键盘入口 ---------- */
+/* 记录相邻击键间隔（keySpacingStats）与按下时刻（配合 keyup 算 keyDurationStats） */
+function markKey(e){
+  const now = performance.now();
+  if(S.running && S.lastKeyAt){
+    const gap = now - S.lastKeyAt;
+    S.spacing.push(gap);
+    if(gap > AFK_GAP_MS && document.hasFocus()) S.afkMs += gap;   // 长时间停手按挂机累计
+  }
+  S.lastKeyAt = now;
+  if(e.code) S.downAt[e.code] = now;
+}
+
+document.addEventListener("keydown", e => {
+  if(S.shareView || S.view !== "type") return;
+  if(authOpen){ if(e.code === "Escape") closeAuth(); return; }
+  if(e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+  if(S.modalOpen){ if(e.code === "Escape") closeModal(); return; }
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const phys = e.code || e.key;
+  if(phys === "Tab"){ e.preventDefault(); reset(); return; }
+  if(S.done){ if(phys === "Enter"){ e.preventDefault(); reset(); } return; }
+  if(phys === "Backspace"){ e.preventDefault(); markKey(e); backspace(); return; }
+
+  const ch = toChar(e);
+  if(ch === null) return;
+  e.preventDefault();
+  markKey(e);
+  typeChar(ch);
+});
+
+/* 按键按下时长：只统计真正参与打字的键（downAt 由 markKey 写入） */
+document.addEventListener("keyup", e => {
+  if(!e.code) return;
+  const t = S.downAt[e.code];
+  if(t === undefined) return;
+  const d = performance.now() - t;
+  if(d > 0 && d < 2000) S.durations.push(d);
+  delete S.downAt[e.code];
+});
+
+/* 失焦即视为挂机，回焦结算 */
+window.addEventListener("blur", () => { if(S.running && !S.done) S.blurAt = performance.now(); });
+window.addEventListener("focus", () => { if(S.blurAt){ S.afkMs += performance.now() - S.blurAt; S.blurAt = 0; } });
+
+window.addEventListener("resize", () => { layout(); if(!resultEl.hidden) drawChart(lastSamples); });
+
+/* ---------- 教学模态框 ---------- */
+function openModal(){ S.modalOpen = true; modalEl.hidden = false; }
+function closeModal(){ S.modalOpen = false; modalEl.hidden = true; }
+modalEl.addEventListener("click", e => { if(e.target === modalEl) closeModal(); });
+$("modal-close").addEventListener("click", closeModal);
+$("teach-home").addEventListener("click", () => { closeModal(); setMode("weak", "asdfjkl;"); });
+$("teach-weak").addEventListener("click", () => { closeModal(); setMode("weak"); });
+
+/* ---------- 顶栏 ---------- */
+$("nav").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  if(b.dataset.mode === "teach"){ openModal(); b.blur(); return; }
+  setMode(b.dataset.mode);
+  b.blur();
+});
+$("time-opts").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  S.timeLimit = parseInt(b.dataset.t, 10);
+  [...$("time-opts").children].forEach(x => x.classList.toggle("active", x === b));
+  if(S.mode === "time") reset(); else setMode("time");
+  b.blur();
+});
+$("btn-restart").addEventListener("click", function(){ reset(); this.blur(); });
+$("btn-again").addEventListener("click", function(){ reset(); this.blur(); });
+
+/* ---------- 视图切换 / 榜单维度 / 我的记录 入口 ---------- */
+$("btn-view-type").addEventListener("click", function(){ setView("type"); this.blur(); });
+$("btn-view-lb").addEventListener("click", function(){ setView("lb"); this.blur(); });
+$("lb-mode-opts").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  LB.mode = b.dataset.mode;
+  [...$("lb-mode-opts").children].forEach(x => x.classList.toggle("active", x === b));
+  loadLeaderboard(); b.blur();
+});
+$("lb-time-opts").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  LB.timeLimit = parseInt(b.dataset.t, 10);
+  [...$("lb-time-opts").children].forEach(x => x.classList.toggle("active", x === b));
+  loadLeaderboard(); b.blur();
+});
+$("btn-my-records").addEventListener("click", () => { $("user-pop").hidden = true; setView("rec"); });
+$("rec-more").addEventListener("click", () => loadRecords(true));
+
+/* ---------- 账号 UI（登录 / 注册 / 登出） ---------- */
+let authOpen = false, authTab = "login";
+
+function openAuth(){
+  authOpen = true;
+  $("auth-modal").hidden = false;
+  $("auth-error").textContent = "";
+  setAuthTab("login");
+  $("auth-account").focus();
+}
+function closeAuth(){ authOpen = false; $("auth-modal").hidden = true; }
+function setAuthTab(t){
+  authTab = t;
+  document.querySelectorAll("#auth-modal .auth-tabs button")
+    .forEach(b => b.classList.toggle("active", b.dataset.tab === t));
+  $("auth-name").hidden = (t !== "signup");
+  $("auth-submit").textContent = (t === "signup") ? "注册" : "登录";
+}
+function toggleUserPop(){
+  if(!ME.uid){ openAuth(); return; }
+  const p = $("user-pop");
+  p.hidden = !p.hidden;
+  if(!p.hidden){ $("up-name").textContent = ME.name; $("up-uid").textContent = ME.uid; }
+}
+
+async function doAuth(){
+  const account = $("auth-account").value.trim();
+  const pass = $("auth-pass").value;
+  const name = $("auth-name").value.trim();
+  const errEl = $("auth-error");
+  errEl.textContent = "";
+  if(!account || !pass){ errEl.textContent = "账号与密码均不能为空"; return; }
+  if(authTab === "signup" && name.length < 2){ errEl.textContent = "用户名至少 2 个字符"; return; }
+  $("auth-submit").disabled = true;
+  try{
+    const d = authTab === "signup"
+      ? await api("/api/users/signup", { method:"POST", auth:false,
+          body:{ name:name, email:account, password:pass } })
+      : await api("/api/users/login",  { method:"POST", auth:false,
+          body:{ account:account, password:pass } });
+    TK.set(d.accessToken, d.refreshToken);
+    ME.uid = d.uid; ME.name = d.name; renderUser();
+    $("auth-pass").value = "";
+    closeAuth();
+  }catch(err){
+    errEl.textContent = err.message;
+  }finally{
+    $("auth-submit").disabled = false;
+  }
+}
+
+async function doLogout(){
+  try{ await api("/api/users/logout", { method:"POST", body:{ refreshToken: TK.refresh } }); }catch(e){}
+  TK.clear(); ME.uid = ""; ME.name = ""; renderUser();
+  $("user-pop").hidden = true;
+  if(S.view === "rec") setView("type");
+}
+
+$("btn-user").addEventListener("click", function(){ toggleUserPop(); this.blur(); });
+$("btn-logout").addEventListener("click", doLogout);
+$("auth-close").addEventListener("click", closeAuth);
+$("auth-submit").addEventListener("click", doAuth);
+$("auth-modal").addEventListener("click", e => { if(e.target === $("auth-modal")) closeAuth(); });
+$("auth-modal").addEventListener("keydown", e => { if(e.code === "Enter"){ e.preventDefault(); doAuth(); } });
+document.querySelectorAll("#auth-modal .auth-tabs button")
+  .forEach(b => b.addEventListener("click", () => setAuthTab(b.dataset.tab)));
+document.addEventListener("click", e => {
+  const p = $("user-pop");
+  if(!p.hidden && !p.contains(e.target) && e.target !== $("btn-user")) p.hidden = true;
+});
+
+/* 生成分享短链（仅本人的有效成绩） */
+$("btn-share").addEventListener("click", async function(){
+  if(!S.lastResultId) return;
+  this.disabled = true;
+  $("share-out").textContent = "生成中…";
+  try{
+    const d = await api("/api/results/" + S.lastResultId + "/share", { method:"POST" });
+    $("share-out").innerHTML = '分享链接：<a href="' + d.url + '" target="_blank">' + d.url + "</a>";
+  }catch(err){
+    $("share-out").innerHTML = '<span class="bad">生成失败：' + err.message + "</span>";
+  }finally{
+    this.disabled = false;
+  }
+});
+
+/* 用已存的 accessToken 恢复登录态（失败则由 api 内部尝试刷新，再失败即视为登出） */
+async function bootAuth(){
+  if(!TK.access && !TK.refresh) return;
+  try{
+    const u = await api("/api/users/me");
+    ME.uid = u.uid; ME.name = u.name; renderUser();
+  }catch(e){ /* 令牌已失效，保持注销态 */ }
+}
+
+/* ---------- 主题 ---------- */
+function applyTheme(t){
+  document.body.dataset.theme = t;
+  try{ localStorage.setItem("theme", t); }catch(err){}
+}
+$("btn-theme").addEventListener("click", function(){
+  applyTheme(document.body.dataset.theme === "light" ? "dark" : "light");
+  if(!resultEl.hidden) drawChart(lastSamples);
+  this.blur();
+});
+try{ applyTheme(localStorage.getItem("theme") || "dark"); }catch(err){ applyTheme("dark"); }
+
+/* ---------- 启动 ---------- */
+renderUser();
+bootAuth();
+const shareCode = new URLSearchParams(location.search).get("r");
+if(shareCode){
+  loadShare(shareCode);          // ?r={code} 打开分享视图
+}else{
+  reset();
+  requestAnimationFrame(layout);
+}
+</script>
+</body>
+</html>

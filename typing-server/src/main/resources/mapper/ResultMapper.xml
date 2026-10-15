@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sjt.typing.mapper.ResultMapper">
+
+    <!-- 查询某用户指定维度的历史最高 WPM（仅有效成绩 validity = 1） -->
+    <select id="selectMaxWpm" resultType="java.math.BigDecimal">
+        SELECT MAX(wpm)
+        FROM t_result
+        WHERE uid = #{uid}
+          AND mode = #{mode}
+          AND mode2 = #{mode2}
+          AND language = #{language}
+          AND validity = 1
+    </select>
+
+</mapper>
