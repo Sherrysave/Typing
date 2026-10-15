@@ -140,7 +140,7 @@ java -jar target/typing-server-1.0.0.jar
 |---|---|---|
 | `SERVER_PORT` | `8090` | 服务端口 |
 | `MYSQL_USER` | `root` | 数据库账号 |
-| `MYSQL_PASSWORD` | `1234` | 数据库密码 |
+| `MYSQL_PASSWORD` | `<your-password>` | 数据库密码 |
 | `REDIS_HOST` | `127.0.0.1` | Redis 地址 |
 | `REDIS_PORT` | `6379` | Redis 端口 |
 | `JWT_SECRET` | 内置占位值 | HS256 密钥，**生产环境务必更换** |
@@ -206,22 +206,3 @@ java -jar target/typing-server-1.0.0.jar
 | `CHART_ERR_MISMATCH` | 图表错误分布与字符统计不一致 |
 
 阈值可在 [application.yml](typing-server/src/main/resources/application.yml) 的 `typing.validation` 下调整。
-
----
-
-## 设计文档
-
-后端的架构取舍、数据库表设计与 Monkeytype 的逐条迁移映射，详见 [后端项目方案.md](后端项目方案.md)。
-
-三个关键设计决策：
-
-1. **成绩由前端计算，后端只做合理性校验** —— 服务端没有完整击键流，重算代价与隐私成本过高，因此着力点是交叉校验而非重放。
-2. **一条成绩是一行自包含记录** —— `chartData` / `charStats` 等数组以 MySQL `JSON` 列内嵌，不拆关联表。
-3. **Redis 是排行榜的一级存储** —— 查询走 `ZSET`，MySQL 只保留「每人每维度最好成绩」用于冷启动回填。
-
----
-
-## 备注
-
-- 仓库不包含 IDE 配置（`.idea/`）与构建产物（`target/`），克隆后可直接在 IDEA / Eclipse 中作为 Maven 工程导入。
-- `application.yml` 中的数据库密码与 JWT 密钥为**本地开发默认值**，部署到公网前请通过环境变量替换。
